@@ -1,34 +1,27 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Inject } from '@nestjs/common';
-import { ClientProxy } from '@nestjs/microservices';
-import { firstValueFrom } from 'rxjs';
-import { RedisService } from '@/redis/redis.service';
+import { ConfigService } from '@nestjs/config';
+import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
-    @Inject('USER_SERVICE') private readonly userClient: ClientProxy,
-    private readonly redisService: RedisService,
     private readonly configService: ConfigService,
+    private readonly rabbitmqService: RabbitMQService,
   ) {}
 
   async login(loginDto: LoginDto) {
     try {
-      const user = await firstValueFrom(
-        this.userClient.send({ cmd: 'validate_user' }, loginDto)
-      );
+      const user = await this.rabbitmqService.sendToUserService('validateUser', loginDto);
 
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
       }
 
       const tokens = await this.generateTokens(user);
-      await this.storeRefreshToken(user.id, tokens.refreshToken);
 
       return {
         accessToken: tokens.accessToken,
@@ -46,12 +39,8 @@ export class AuthService {
 
   async register(registerDto: RegisterDto) {
     try {
-      const user = await firstValueFrom(
-        this.userClient.send({ cmd: 'create_user' }, registerDto)
-      );
-
+      const user = await this.rabbitmqService.sendToUserService('createUser', registerDto);
       const tokens = await this.generateTokens(user);
-      await this.storeRefreshToken(user.id, tokens.refreshToken);
 
       return {
         accessToken: tokens.accessToken,
@@ -66,16 +55,14 @@ export class AuthService {
       throw error;
     }
   }
-  
+
   async validateToken(token: string) {
     try {
       const payload = this.jwtService.verify(token, {
-        secret: this.configService.get('JWT_SECRET'),
+        secret: this.configService.get('jwt.secret'),
       });
 
-      const user = await firstValueFrom(
-        this.userClient.send({ cmd: 'get_user' }, { id: payload.sub })
-      );
+      const user = await this.validateUserById(payload.sub);
 
       if (!user) {
         throw new UnauthorizedException();
@@ -92,22 +79,13 @@ export class AuthService {
   }
 
   async refreshToken(userId: string, refreshToken: string) {
-    const storedToken = await this.redisService.get(`refresh_token:${userId}`);
-    
-    if (!storedToken || storedToken !== refreshToken) {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-
-    const user = await firstValueFrom(
-      this.userClient.send({ cmd: 'get_user' }, { id: userId })
-    );
+    const user = await this.validateUserById(userId);
 
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
 
     const tokens = await this.generateTokens(user);
-    await this.storeRefreshToken(userId, tokens.refreshToken);
 
     return {
       accessToken: tokens.accessToken,
@@ -116,7 +94,6 @@ export class AuthService {
   }
 
   async logout(userId: string) {
-    await this.redisService.del(`refresh_token:${userId}`);
     return { message: 'Successfully logged out' };
   }
 
@@ -129,28 +106,34 @@ export class AuthService {
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get('JWT_SECRET'),
-        expiresIn: '1h',
+        secret: this.configService.get('jwt.secret'),
+        expiresIn: this.configService.get('jwt.expiresIn'),
       }),
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get('JWT_REFRESH_SECRET'),
-        expiresIn: '7d',
+        secret: this.configService.get('jwt.refreshSecret'),
+        expiresIn: this.configService.get('jwt.refreshExpiresIn'),
       }),
     ]);
 
     return { accessToken, refreshToken };
   }
 
-  private async storeRefreshToken(userId: string, refreshToken: string) {
-    const ttl = 7 * 24 * 60 * 60; // 7 days in seconds
-    await this.redisService.set(`refresh_token:${userId}`, refreshToken, ttl);
+  async validateUser(username: string, password: string): Promise<any> {
+    const user = await this.rabbitmqService.sendToUserService('validateUser', {
+      username,
+      password,
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    return user;
   }
 
-  async validateUserById(userId: string) {
+  async validateUserById(userId: string): Promise<any> {
     try {
-      const user = await firstValueFrom(
-        this.userClient.send({ cmd: 'get_user' }, { id: userId })
-      );
+      const user = await this.rabbitmqService.sendToUserService('getUser', { id: userId });
       return user;
     } catch (error) {
       return null;
