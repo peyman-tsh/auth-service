@@ -3,11 +3,10 @@ import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
+import { PubService } from './pub.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
-import { CircuitBreakerModule } from '../circuit-breaker/circuit-breaker.module';
 import { ClientsModule,Transport } from '@nestjs/microservices';
 import configuration from '@/config/configuration';
 @Module({
@@ -21,7 +20,6 @@ import configuration from '@/config/configuration';
       signOptions: { expiresIn: '1h' },
     }),
     RabbitMQModule,
-    CircuitBreakerModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -36,22 +34,11 @@ import configuration from '@/config/configuration';
             durable: true,
           },
         },
-      },
-      {
-        name: 'API_GATEWAY',
-        transport: Transport.RMQ,
-        options: {
-          urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
-          queue: 'auth_queue',
-          queueOptions: {
-            durable: true,
-          },
-        },
-      },
+      }
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy],
-  exports: [AuthService],
+  providers: [PubService, LocalStrategy, JwtStrategy],
+  exports: [PubService],
 })
 export class AuthModule {} 

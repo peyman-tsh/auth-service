@@ -6,7 +6,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
-export class AuthService {
+export class PubService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
@@ -133,7 +133,7 @@ export class AuthService {
 
   async validateUserById(userId: string): Promise<any> {
     try {
-      const user = await this.rabbitmqService.sendToUserService('getUser', { id: userId });
+      const user = await this.rabbitmqService.sendToUserService('findById',userId);
       return user;
     } catch (error) {
       return null;

@@ -1,28 +1,29 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices';
+import { ClientProxy, ClientProxyFactory, MessagePattern, Transport } from '@nestjs/microservices';
 
 @Injectable()
-export class RabbitMQService implements OnModuleDestroy {
-  private readonly userServiceClient: ClientProxy;
+export class RabbitMQService implements OnModuleDestroy {;
 
-  constructor(private readonly configService: ConfigService) {
-    const rabbitmqUrl = this.configService.get('rabbitmq.url') || 'amqp://localhost:5672';
+  constructor(private readonly configService: ConfigService,
+   @Inject("USER_SERVICE") private readonly userServiceClient:ClientProxy
+  ) {
+    // const rabbitmqUrl = this.configService.get('rabbitmq.url') || 'amqp://localhost:5672';
 
-    this.userServiceClient = ClientProxyFactory.create({
-      transport: Transport.RMQ,
-      options: {
-        urls: [rabbitmqUrl],
-        queue: 'user_queue',
-        queueOptions: {
-          durable: true,
-        },
-      },
-    });
+    // this.userServiceClient = ClientProxyFactory.create({
+    //   transport: Transport.RMQ,
+    //   options: {
+    //     urls: [rabbitmqUrl],
+    //     queue: 'user_queue',
+    //     queueOptions: {
+    //       durable: true,
+    //     },
+    //   },
+    // });
   }
 
   async sendToUserService(pattern: string, data: any) {
-    return this.userServiceClient.send(pattern, data).toPromise();
+    return await this.userServiceClient.emit({cmd:pattern}, data).toPromise();
   }
 
   async onModuleDestroy() {

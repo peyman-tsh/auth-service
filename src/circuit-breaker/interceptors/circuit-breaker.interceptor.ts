@@ -1,71 +1,47 @@
-import {
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-  BadGatewayException,
-} from '@nestjs/common';
-import { Observable, throwError } from 'rxjs';
-import { catchError } from 'rxjs/operators';
-import CircuitBreaker from 'opossum';
+import * as CircuitBreaker from 'opossum';
+import { Options } from 'opossum';
 
-@Injectable()
-export class CircuitBreakerInterceptor implements NestInterceptor {
-  private readonly circuitBreakers: Map<string, CircuitBreaker>;
 
-  constructor() {
-    this.circuitBreakers = new Map();
-  }
+export const breakerOptions = {
+  timeout: 3000, // Timeout in milliseconds
+  errorThresholdPercentage: 50, // Error threshold to open the circuit
+  resetTimeout: 5000, // Time to wait before attempting a reset
+};
 
-  async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<any>> {
-    const request = context.switchToHttp().getRequest();
-    const serviceName = request.url.split('/')[1];
-    const key = `circuit:${serviceName}`;
+export function UseCircuitBreaker(options: Options = {}) {
+  return function (
+    target: Record<string, any>,
+    propertyKey: string,
+    descriptor: PropertyDescriptor,
+  ) {
+    const originalMethod = descriptor.value;
 
-    // Get or create circuit breaker for this service
-    let circuit = this.circuitBreakers.get(key);
-    if (!circuit) {
-      circuit = new CircuitBreaker(
-        async () => {
-          return next.handle().toPromise();
-        },
-        {
-          timeout: 3000, // 3 seconds
-          errorThresholdPercentage: 50,
-          resetTimeout: 30000, // 30 seconds
-          rollingCountTimeout: 10000, // 10 seconds
-          rollingCountBuckets: 10,
-          name: key,
-        }
+    // Replace the method with a circuit breaker wrapper
+    descriptor.value = async function (...args: any[]) {
+      const circuitBreaker = new CircuitBreaker(
+        // Use Reflect.apply to correctly bind `this` to the method
+       async (...methodArgs) => Reflect.apply(originalMethod, this, methodArgs),
+        options,
       );
 
-      // Handle circuit breaker events
-      circuit.on('open', () => {
-        console.log(`Circuit breaker for ${key} is open`);
-      });
+      // Provide a fallback
+      circuitBreaker.fallback(() => ({
+        status: 'error',
+        message: 'Service temporarily unavailable. Please try again later.',
+      }));
 
-      circuit.on('halfOpen', () => {
-        console.log(`Circuit breaker for ${key} is half-open`);
-      });
-
-      circuit.on('close', () => {
-        console.log(`Circuit breaker for ${key} is closed`);
-      });
-
-      this.circuitBreakers.set(key, circuit);
-    }
-
-    try {
-      const result = await circuit.fire();
-      return new Observable(subscriber => {
-        subscriber.next(result);
-        subscriber.complete();
-      });
-    } catch (error) {
-      if (error.name === 'CircuitBreakerOpenError') {
-        throw new BadGatewayException('Service is temporarily unavailable');
+      try {
+        // Execute the circuit breaker
+        return await circuitBreaker.fire(...args);
+      } catch (error) {
+        console.error(
+          `Circuit breaker error for ${propertyKey}:`,
+          error.message,
+        );
+        throw error;
       }
-      return throwError(() => error);
-    }
-  }
-} 
+    };
+
+    return descriptor;
+  };
+}
