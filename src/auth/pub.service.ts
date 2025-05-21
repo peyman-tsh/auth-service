@@ -1,21 +1,21 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ClientProxy, RpcException } from '@nestjs/microservices';
 
 @Injectable()
 export class PubService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    private readonly rabbitmqService: RabbitMQService,
+    @Inject("USER_SERVICE") private readonly userClient:ClientProxy
   ) {}
 
   async login(loginDto: LoginDto) {
     try {
-      const user = await this.rabbitmqService.sendToUserService('validateUser', loginDto);
+      const user = await this.userClient.send({cmd:'validateUser'}, loginDto).toPromise();
 
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
@@ -38,8 +38,16 @@ export class PubService {
   }
 
   async register(registerDto: RegisterDto) {
-    try {
-      const user = await this.rabbitmqService.sendToUserService('createUser', registerDto);
+      
+      const user =await this.userClient.send({cmd:'createUser'}, registerDto).toPromise();
+      if(user.error){
+        return {
+          status:user.error.statusCode,
+          message:user.error.message
+        }
+      }
+      console.log(user);
+      
       const tokens = await this.generateTokens(user);
 
       return {
@@ -51,10 +59,7 @@ export class PubService {
           role: user.role,
         },
       };
-    } catch (error) {
-      throw error;
     }
-  }
 
   async validateToken(token: string) {
     try {
@@ -74,6 +79,8 @@ export class PubService {
         role: user.role,
       };
     } catch (error) {
+      console.log(error);
+      
       throw new UnauthorizedException();
     }
   }
@@ -98,6 +105,8 @@ export class PubService {
   }
 
   private async generateTokens(user: any) {
+    console.log(user);
+    
     const payload = { 
       sub: user.id, 
       email: user.email,
@@ -119,7 +128,7 @@ export class PubService {
   }
 
   async validateUser(username: string, password: string): Promise<any> {
-    const user = await this.rabbitmqService.sendToUserService('validateUser', {
+    const user = await this.userClient.send({cmd:'validateUser'}, {
       username,
       password,
     });
@@ -133,7 +142,7 @@ export class PubService {
 
   async validateUserById(userId: string): Promise<any> {
     try {
-      const user = await this.rabbitmqService.sendToUserService('findById',userId);
+      const user = await this.userClient.send({cmd:"findById"},userId);
       return user;
     } catch (error) {
       return null;

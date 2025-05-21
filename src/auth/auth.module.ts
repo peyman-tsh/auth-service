@@ -6,9 +6,10 @@ import { AuthController } from './auth.controller';
 import { PubService } from './pub.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
-import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
 import { ClientsModule,Transport } from '@nestjs/microservices';
 import configuration from '@/config/configuration';
+import { APP_FILTER } from '@nestjs/core';
+import { RpcExceptionFilter } from './exceptions/exception.filter';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -19,7 +20,6 @@ import configuration from '@/config/configuration';
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '1h' },
     }),
-    RabbitMQModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -31,14 +31,19 @@ import configuration from '@/config/configuration';
           urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
           queue: 'user_queue',
           queueOptions: {
-            durable: true,
+            durable: false,
           },
         },
       }
     ]),
   ],
   controllers: [AuthController],
-  providers: [PubService, LocalStrategy, JwtStrategy],
+  providers: [PubService, LocalStrategy, JwtStrategy,
+    {
+      provide:APP_FILTER,
+      useClass:RpcExceptionFilter
+    }
+  ],
   exports: [PubService],
 })
 export class AuthModule {} 

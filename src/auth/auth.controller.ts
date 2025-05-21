@@ -1,5 +1,5 @@
 import { Controller, Inject, UseInterceptors } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
+import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
 import { PubService } from './pub.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -23,7 +23,7 @@ export class AuthController {
   // @UseCircuitBreaker()
   async register(@Payload() registerDto: RegisterDto) {
     return this.pubservice.register(registerDto);
-  }
+}
 
   @MessagePattern({ cmd: 'validate_token' })
   @UseCircuitBreaker()
