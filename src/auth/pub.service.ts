@@ -16,11 +16,12 @@ export class PubService {
   async login(loginDto: LoginDto) {
     try {
       const user = await this.userClient.send({cmd:'validateUser'}, loginDto).toPromise();
-
-      if (!user) {
-        throw new UnauthorizedException('Invalid credentials');
+      if(user.error){
+        return{
+          status:user.error.statusCode,
+          message:user.error.message
+        }
       }
-
       const tokens = await this.generateTokens(user);
 
       return {

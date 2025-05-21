@@ -11,12 +11,10 @@ export class AuthController {
     private readonly pubservice: PubService,
   ) {}
 
-  @MessagePattern({ cmd: 'authenticate' })
+  @MessagePattern({ cmd: 'login' })
   @UseCircuitBreaker()
   async login(@Payload() loginDto: LoginDto) {
-    console.log(loginDto);
-    return 'ok'
-    // return this.pubservice.login(loginDto);
+    return await this.pubservice.login(loginDto)
   }
 
   @MessagePattern({ cmd: 'register' })
