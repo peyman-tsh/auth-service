@@ -23,8 +23,9 @@ export class PubService {
         }
       }
       const tokens = await this.generateTokens(user);
-
       return {
+        status:200,
+        message:{
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         user: {
@@ -32,12 +33,15 @@ export class PubService {
           email: user.email,
           role: user.role,
         },
+      }
       };
     } catch (error) {
       throw new UnauthorizedException('Invalid credentials');
     }
   }
 
+
+  
   async register(registerDto: RegisterDto) {
       
       const user =await this.userClient.send({cmd:'createUser'}, registerDto).toPromise();
@@ -52,14 +56,17 @@ export class PubService {
       const tokens = await this.generateTokens(user);
 
       return {
+        status:200,
+        message:{
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
+          id: user.message.id,
+          email: user.message.email,
+          role: user.message.role,
         },
-      };
+      }
+    }
     }
 
   async validateToken(token: string) {

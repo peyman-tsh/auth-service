@@ -23,12 +23,10 @@ export function UseCircuitBreaker(options: Options = {}) {
        async (...methodArgs) => Reflect.apply(originalMethod, this, methodArgs),
         options,
       );
-
-      // Provide a fallback
-      circuitBreaker.fallback(() => ({
-        status: 'error',
-        message: 'Service temporarily unavailable. Please try again later.',
-      }));
+      circuitBreaker.on('failure', (error) => console.error('Circuit Breaker Failure:', error.message));
+      circuitBreaker.on('open', () => console.warn('Circuit Breaker is Open'));
+      circuitBreaker.on('halfOpen', () => console.warn('Circuit Breaker is Half-Open'));
+      circuitBreaker.on('close', () => console.log('Circuit Breaker is Closed'))
 
       try {
         // Execute the circuit breaker
@@ -38,7 +36,7 @@ export function UseCircuitBreaker(options: Options = {}) {
           `Circuit breaker error for ${propertyKey}:`,
           error.message,
         );
-        throw error;
+        return error;
       }
     };
 

@@ -18,7 +18,7 @@ export class AuthController {
   }
 
   @MessagePattern({ cmd: 'register' })
-  // @UseCircuitBreaker()
+  @UseCircuitBreaker()
   async register(@Payload() registerDto: RegisterDto) {
     return this.pubservice.register(registerDto);
 }
